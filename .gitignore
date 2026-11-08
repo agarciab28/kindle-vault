@@ -1,0 +1,13 @@
+# Build output (binaries are reproducible with deploy.sh / client/build.sh)
+build/
+
+# Written by vaultd at runtime: per-start API token for the WAF
+waf/token.js
+
+# Never commit device state, logs or credentials
+*.log
+state.json
+*.db
+*.db.orig
+.obsidian-headless/
+ob-home/

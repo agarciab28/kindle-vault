@@ -1,0 +1,156 @@
+diff --git a/src/internal/cli/sync.go b/src/internal/cli/sync.go
+index 2263a2f..62353e4 100644
+--- a/src/internal/cli/sync.go
++++ b/src/internal/cli/sync.go
+@@ -147,7 +147,12 @@ func newSyncSetupCommand(app *App) *cobra.Command {
+ 			if err != nil {
+ 				return err
+ 			}
+-			isEncrypted := vault.EncryptionVersion > 0
++			// Local patch: legacy V0 vaults are encrypted too (AES-GCM) when they have a salt.
++			// Managed ("standard") encryption vaults expose their password via the API.
++			isEncrypted := vault.EncryptionVersion > 0 || vault.Salt != ""
++			if isEncrypted && password == "" && vault.Password != "" {
++				password = vault.Password
++			}
+ 			if isEncrypted && password == "" {
+ 				fmt.Fprint(app.stdout, "Vault password: ")
+ 				pass, err := readPassword(app.stdin)
+@@ -387,10 +392,15 @@ func newSyncRunCommand(app *App) *cobra.Command {
+ 			if cfg == nil {
+ 				return fmt.Errorf("no sync config for %s", localPath)
+ 			}
+-			if cfg.EncryptionVersion != 0 {
+-				encKey, encSalt, err := app.configManager.LoadVaultSecrets(cfg.VaultID)
+-				if err != nil {
+-					return err
++			// Local patch: also load secrets for legacy V0 vaults; only V2/V3 require them.
++			if encKey, encSalt, loadErr := app.configManager.LoadVaultSecrets(cfg.VaultID); cfg.EncryptionVersion == 0 {
++				if loadErr == nil && encKey != "" && encSalt != "" {
++					cfg.EncryptionKey = encKey
++					cfg.EncryptionSalt = encSalt
++				}
++			} else {
++				if loadErr != nil {
++					return loadErr
+ 				}
+ 				if encKey == "" {
+ 					return fmt.Errorf("missing encryption key for encrypted vault %q; re-run `sync-setup --password` or restore the secrets store", cfg.VaultID)
+diff --git a/src/internal/encryption/provider.go b/src/internal/encryption/provider.go
+index 10ee5af..cc8a7a1 100644
+--- a/src/internal/encryption/provider.go
++++ b/src/internal/encryption/provider.go
+@@ -115,7 +115,8 @@ func (e *encryptionV0) EncryptPath(path string) (string, error) {
+ 	hash := sha256.Sum256([]byte(path))
+ 	iv := hash[:12]
+ 	plaintext := []byte(path)
+-	ciphertext := e.gcm.Seal(nil, iv, plaintext, nil)
++	// Local patch: like DecryptData, the 12-byte IV is prefixed to the ciphertext.
++	ciphertext := e.gcm.Seal(append([]byte{}, iv...), iv, plaintext, nil)
+ 	return hex.EncodeToString(ciphertext), nil
+ }
+ 
+@@ -124,8 +125,11 @@ func (e *encryptionV0) DecryptPath(encoded string) (string, error) {
+ 	if err != nil {
+ 		return "", err
+ 	}
+-	iv := sha256.Sum256(data)
+-	plaintext, err := e.gcm.Open(nil, iv[:12], data, nil)
++	if len(data) < 12 {
++		return "", fmt.Errorf("ciphertext too short")
++	}
++	// Local patch: the IV is the first 12 bytes (SHA-256(path)[:12] at encryption time).
++	plaintext, err := e.gcm.Open(nil, data[:12], data[12:], nil)
+ 	if err != nil {
+ 		return "", err
+ 	}
+diff --git a/src/internal/sync/engine.go b/src/internal/sync/engine.go
+index 5c345f2..3d05028 100644
+--- a/src/internal/sync/engine.go
++++ b/src/internal/sync/engine.go
+@@ -59,7 +59,7 @@ func NewEngine(config model.SyncConfig, token string, logger zerolog.Logger) (*E
+ 	e := &Engine{Config: config, Token: token, Logger: logger}
+ 
+ 	var rawKey []byte
+-	if config.EncryptionVersion > 0 && config.EncryptionKey != "" {
++	if config.EncryptionKey != "" { // local patch: also V0 vaults
+ 		logger.Debug().Str("vaultID", config.VaultID).Str("encryptionVersion", fmt.Sprint(config.EncryptionVersion)).Msg("creating encryption provider")
+ 		var err error
+ 		rawKey, err = encryption.DeriveKey(config.EncryptionKey, config.EncryptionSalt)
+@@ -274,6 +274,10 @@ func (e *Engine) runSyncCycle(
+ 	}
+ 
+ 	session := newRemoteSession(conn, currentRemote, version, ctx, e.enc, e.Logger, e.rawKey)
++	if e.isReadOnlyMode() {
++		session.readOnly = true
++		plan = e.readOnlyPlan(plan, currentRemote)
++	}
+ 	if err := e.executePlan(ctx, plan, currentLocal, previousRemote, previousLocal, session, version); err != nil {
+ 		return 0, nil, err
+ 	}
+@@ -777,3 +781,32 @@ func diffRecords(current, previous map[string]model.FileRecord) (upserts []model
+ 	}
+ 	return upserts, deletes
+ }
++
++
++// isReadOnlyMode (local patch) reports whether the configured sync mode must never
++// modify the remote vault. Upstream v0.3.6 only uses the mode to disable the
++// watcher, so "pull" and "mirror" still uploaded local changes in one-shot sync.
++func (e *Engine) isReadOnlyMode() bool {
++	return e.Config.SyncMode == "pull" || e.Config.SyncMode == "mirror"
++}
++
++// readOnlyPlan (local patch) rewrites a plan so the remote always wins:
++// uploads, remote deletions and merges become downloads when the file exists
++// remotely; local-only files are left untouched.
++func (e *Engine) readOnlyPlan(plan []syncAction, currentRemote map[string]model.FileRecord) []syncAction {
++	out := make([]syncAction, 0, len(plan))
++	for _, a := range plan {
++		switch a.Kind {
++		case syncActionDownload, syncActionDeleteLocal:
++			out = append(out, a)
++		default:
++			if rec, ok := currentRemote[a.Path]; ok && !rec.Deleted {
++				e.Logger.Info().Str("path", a.Path).Str("was", a.Kind.String()).Msg("read-only mode: restoring remote version")
++				out = append(out, syncAction{Path: a.Path, Kind: syncActionDownload})
++			} else {
++				e.Logger.Info().Str("path", a.Path).Str("was", a.Kind.String()).Msg("read-only mode: skipping local-only change")
++			}
++		}
++	}
++	return out
++}
+diff --git a/src/internal/sync/session.go b/src/internal/sync/session.go
+index 8623119..f0b6b7d 100644
+--- a/src/internal/sync/session.go
++++ b/src/internal/sync/session.go
+@@ -27,6 +27,8 @@ type remoteSession struct {
+ 	rawKey     []byte
+ 	justPushed *model.FileRecord
+ 	mu         sync.Mutex
++	// readOnly (local patch): when true, push and delete are refused.
++	readOnly bool
+ }
+ 
+ func newRemoteSession(conn *websocket.Conn, remote map[string]model.FileRecord, version int64, ctx context.Context, enc encryption.EncryptionProvider, logger zerolog.Logger, rawKey []byte) *remoteSession {
+@@ -185,6 +187,9 @@ func (s *remoteSession) pull(uid int64) ([]byte, error) {
+ }
+ 
+ func (s *remoteSession) push(record model.FileRecord, data []byte) error {
++	if s.readOnly {
++		return fmt.Errorf("read-only sync mode: refusing to push %q", record.Path)
++	}
+ 	var pieces int
+ 	if len(data) > 0 {
+ 		pieces = (len(data) + chunkSize - 1) / chunkSize
+@@ -296,6 +301,9 @@ func (s *remoteSession) push(record model.FileRecord, data []byte) error {
+ }
+ 
+ func (s *remoteSession) delete(path string) error {
++	if s.readOnly {
++		return fmt.Errorf("read-only sync mode: refusing to delete remote %q", path)
++	}
+ 	s.Logger.Debug().Str("path", path).Msg("delete start")
+ 	encryptedPath := s.encryptPath(path)
+ 	if err := s.writeJSON(map[string]any{"op": "push", "path": encryptedPath, "extension": filepath.Ext(path), "hash": "", "ctime": time.Now().UnixMilli(), "mtime": time.Now().UnixMilli(), "folder": false, "deleted": true, "size": 0, "pieces": 0}); err != nil {

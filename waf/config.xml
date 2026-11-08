@@ -1,0 +1,44 @@
+<?xml version="1.0"?>
+<widget xmlns="http://www.w3.org/ns/widgets" xmlns:kindle="http://kindle.amazon.com/ns/widget-extensions"
+    id="com.alexgar.vault" version="1.0" viewmodes="application">
+
+    <name xml:lang="en">Bóveda</name>
+    <name xml:lang="es">Bóveda</name>
+    <description xml:lang="es">Bóveda de Obsidian (solo lectura)</description>
+
+    <content src="index.html" />
+
+    <!-- vaultd listens on 127.0.0.1:8317 -->
+    <kindle:permissions>
+        <kindle:permission name="local-port-access" />
+    </kindle:permissions>
+
+    <kindle:gestures>
+        <kindle:param name="tap" value="yes" />
+        <kindle:param name="swipe" value="yes" />
+    </kindle:gestures>
+
+    <kindle:messaging>
+        <kindle:app name="com.lab126.chromebar" value="yes" />
+        <kindle:app name="com.lab126.pillow" value="yes" />
+        <kindle:app name="com.lab126.appmgrd" value="yes" />
+        <!-- needed to ask ourselves for full screen (switchViewMode), like com.lab126.mfa -->
+        <kindle:app name="com.alexgar.vault" value="yes" />
+    </kindle:messaging>
+
+    <feature name="http://kindle.amazon.com/apis" required="true">
+        <param name="appmgr" value="yes" />
+        <param name="net" value="yes" />
+        <param name="gestures" value="yes" />
+        <param name="chrome" value="yes" />
+        <param name="dev" value="yes" />
+        <param name="device" value="yes" />
+        <param name="messaging" value="yes" />
+        <param name="viewport" value="yes" />
+    </feature>
+
+    <kindle:settings>
+        <kindle:setting name="internetRequired" value="no" />
+        <kindle:setting name="saveContext" value="no" />
+    </kindle:settings>
+</widget>
