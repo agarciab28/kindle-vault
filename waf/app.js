@@ -22,6 +22,30 @@
     xhr.send(null);
   }
 
+  // Account actions only. The body is form-encoded: the password never goes in the URL.
+  function post(path, fields, ok, fail) {
+    var xhr = new XMLHttpRequest();
+    var body = [];
+    for (var k in fields) {
+      if (fields.hasOwnProperty(k)) { body.push(encodeURIComponent(k) + '=' + encodeURIComponent(fields[k])); }
+    }
+    xhr.open('POST', API + path + '?k=' + encodeURIComponent(window.VAULT_TOKEN || ''), true);
+    xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+    xhr.timeout = 40000;
+    xhr.onreadystatechange = function () {
+      if (xhr.readyState !== 4) { return; }
+      var r = null;
+      if (xhr.status === 200) { try { r = JSON.parse(xhr.responseText); } catch (e) { r = null; } }
+      if (r) { ok(r); } else { fail(); }
+    };
+    xhr.send(body.join('&'));
+  }
+
+  function accountMsg(html) {
+    var el = document.getElementById('loginmsg');
+    if (el) { el.innerHTML = html; }
+  }
+
   function offline() {
     show({
       title: 'Bóveda',
@@ -59,6 +83,11 @@
       });
     }
     else if (h === '/sync') { startSync(); }
+    else if (h === '/account') {
+      show({ title: 'Cuenta', html: '<p>Revisando la sesión de Obsidian…</p>' });
+      get('/api/account', show);
+    }
+    else if (h === '/account/login') { get('/api/account?form=1', show); }
     else { location.hash = '#/'; }
   }
 
@@ -71,7 +100,9 @@
     } else {
       html += '<p><strong>No se pudo sincronizar.</strong></p><pre class="err">' + escapeHtml(state.lastError || extra || '') + '</pre>';
     }
-    html += '</div><p><a class="btn" href="#/">Ir al inicio</a></p>';
+    html += '</div><p><a class="btn" href="#/">Ir al inicio</a>';
+    if (!state.running && !state.lastOk) { html += ' <a class="btn" href="#/account">Cuenta</a>'; }
+    html += '</p>';
     show({ title: 'Sincronizar', html: html });
   }
 
@@ -160,6 +191,42 @@
     page: function (dir) {
       var h = window.innerHeight || document.documentElement.clientHeight;
       window.scrollBy(0, dir * Math.round(h * 0.85));
+    },
+    login: function (form) {
+      var btn = form.getElementsByTagName('button')[0];
+      if (btn.disabled) { return false; }
+      btn.disabled = true;
+      accountMsg('<p><strong>Iniciando sesión…</strong></p>');
+      post('/api/login', { email: form.email.value, password: form.password.value, mfa: form.mfa.value }, function (r) {
+        btn.disabled = false;
+        form.mfa.value = '';
+        if (r.ok) {
+          form.password.value = '';
+          accountMsg('<p><strong>' + escapeHtml(r.message) + '</strong> Sincronizando…</p>');
+          setTimeout(function () { location.hash = '#/sync'; }, 1500);
+          return;
+        }
+        accountMsg('<p class="alert"><strong>' + escapeHtml(r.message) + '</strong></p>');
+        if (r.need2fa) { form.mfa.focus(); }
+      }, function () {
+        btn.disabled = false;
+        accountMsg('<p class="alert"><strong>No hubo respuesta del servicio.</strong> Vuelve a intentarlo.</p>');
+      });
+      return false;
+    },
+    logout: function (confirmed) {
+      if (!confirmed) {
+        accountMsg('<p>Este Kindle dejará de actualizar la bóveda hasta que vuelvas a iniciar sesión. Las notas descargadas se quedan.</p>' +
+          '<p><a class="btn" href="javascript:app.logout(true)">Sí, cerrar sesión</a></p>');
+        return;
+      }
+      accountMsg('<p>Cerrando sesión…</p>');
+      post('/api/logout', {}, function (r) {
+        if (r.ok) { show({ title: 'Cuenta', html: '<div class="syncbox"><p><strong>' + escapeHtml(r.message) + '</strong></p></div><p><a class="btn" href="#/account/login">Iniciar sesión</a> <a class="btn" href="#/">Ir al inicio</a></p>' }); }
+        else { accountMsg('<p class="alert"><strong>' + escapeHtml(r.message) + '</strong></p>'); }
+      }, function () {
+        accountMsg('<p class="alert"><strong>No hubo respuesta del servicio.</strong></p>');
+      });
     },
     search: function (form) {
       var q = form.q.value.replace(/^\s+|\s+$/g, '');

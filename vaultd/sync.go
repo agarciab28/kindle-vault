@@ -29,6 +29,7 @@ type Syncer struct {
 	command   []string // e.g. ["/bin/sh", "/mnt/us/ob-kindle.sh", "sync"]
 	wifiCmd   []string // e.g. ["lipc-get-prop", "com.lab126.wifid", "cmState"]; empty = always online
 	onDone    func()
+	busy      bool // an account operation (login/logout) is running
 }
 
 func NewSyncer(statePath string, command, wifiCmd []string, onDone func()) *Syncer {
@@ -60,7 +61,7 @@ func (s *Syncer) Online() bool {
 // It returns false if a sync was already running.
 func (s *Syncer) Start() bool {
 	s.mu.Lock()
-	if s.state.Running {
+	if s.state.Running || s.busy {
 		s.mu.Unlock()
 		return false
 	}
@@ -68,6 +69,26 @@ func (s *Syncer) Start() bool {
 	s.state.LastAttempt = time.Now()
 	s.mu.Unlock()
 	go s.run()
+	return true
+}
+
+// Exclusive runs fn while no sync can start, so login/logout never race a sync
+// over the client's credentials. It returns false (fn not run) if a sync or
+// another account operation is running.
+func (s *Syncer) Exclusive(fn func()) bool {
+	s.mu.Lock()
+	if s.state.Running || s.busy {
+		s.mu.Unlock()
+		return false
+	}
+	s.busy = true
+	s.mu.Unlock()
+	defer func() {
+		s.mu.Lock()
+		s.busy = false
+		s.mu.Unlock()
+	}()
+	fn()
 	return true
 }
 

@@ -20,6 +20,7 @@ func main() {
 	addr := flag.String("addr", "127.0.0.1:8317", "listen address (keep it on localhost)")
 	state := flag.String("state", "/mnt/us/vault-app/state.json", "sync state file")
 	syncCmd := flag.String("sync", "/bin/sh /mnt/us/ob-kindle.sh sync", "sync command")
+	accountCmd := flag.String("account", "/bin/sh /mnt/us/ob-kindle.sh", "client wrapper for login / logout / whoami")
 	wifiCmd := flag.String("wifi", "lipc-get-prop com.lab126.wifid cmState", "command that prints CONNECTED when online (empty: always online)")
 	homeCmd := flag.String("home", "lipc-set-prop com.lab126.appmgrd start app://com.lab126.booklet.home", "command that returns to the Kindle home")
 	tz := flag.String("tz", "America/Monterrey", "time zone for dates")
@@ -95,6 +96,37 @@ func main() {
 	})
 	mux.HandleFunc("/api/status", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]any{"state": s.State(), "notes": v.Count(), "online": s.Online()})
+	})
+	acct := &Account{command: strings.Fields(*accountCmd), syncer: s}
+	mux.HandleFunc("/api/account", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("form") == "1" {
+			page(w, AccountPage("", false, "", true), true)
+			return
+		}
+		if !s.Online() {
+			page(w, AccountPage("", false, "Sin Wi-Fi: no se puede revisar la sesión ahora.", false), true)
+			return
+		}
+		email, err := acct.Status()
+		msg := ""
+		if err != nil {
+			msg = err.Error()
+		}
+		page(w, AccountPage(email, true, msg, false), true)
+	})
+	mux.HandleFunc("/api/login", func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil {
+			writeJSON(w, AccountResult{Message: "Datos inválidos."})
+			return
+		}
+		res := acct.Login(r.PostForm.Get("email"), r.PostForm.Get("password"), r.PostForm.Get("mfa"))
+		log.Printf("account: login ok=%v", res.OK) // never the email or password
+		writeJSON(w, res)
+	})
+	mux.HandleFunc("/api/logout", func(w http.ResponseWriter, r *http.Request) {
+		res := acct.Logout()
+		log.Printf("account: logout ok=%v", res.OK)
+		writeJSON(w, res)
 	})
 	mux.HandleFunc("/api/exit", func(w http.ResponseWriter, r *http.Request) {
 		if f := strings.Fields(*homeCmd); len(f) > 0 {

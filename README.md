@@ -20,11 +20,11 @@ Obsidian Sync ──(ob-kindle sync, mirror mode)──▶ /mnt/us/vault/*.md
 
 | Path | What |
 |---|---|
-| `client/` | Patch for [obsidian-headless (Go)](https://github.com/Belphemur/obsidian-headless) v0.3.6 and `build.sh` (ARMv7 + macOS). The patch makes `pull`/`mirror` really read-only, supports legacy v0-encrypted vaults and fixes v0 path decryption. |
+| `client/` | Patch for [obsidian-headless (Go)](https://github.com/Belphemur/obsidian-headless) v0.3.6 and `build.sh` (ARMv7 + macOS). The patch makes `pull`/`mirror` really read-only, supports legacy v0-encrypted vaults, fixes v0 path decryption and reads a piped password as a whole line (spaces included). |
 | `vaultd/` | The local service (Go, no CGO). `go build` for the Mac; `deploy.sh` cross-compiles for the Kindle. |
 | `waf/` | The app UI: `config.xml`, `index.html`, `app.js` (ES5), `app.css` (e-ink). |
-| `kindle/` | `Boveda.sh` (library launcher), `install.sh` / `uninstall.sh`, `ob-kindle.sh` (sync wrapper that refuses to run unless the mode is `mirror`). |
-| `deploy.sh` | Builds `vaultd` and installs everything over Wi-Fi (KOReader's SSH server, port 2222, key auth). |
+| `kindle/` | `Boveda.sh` (library launcher), `install.sh` / `uninstall.sh`, `ob-kindle.sh` (client wrapper: `login`, `logout`, `whoami`, `setup`, `sync`; `sync` refuses to run unless the mode is `mirror`). |
+| `deploy.sh` | Builds `vaultd` and installs everything over Wi-Fi (KOReader's SSH server, port 2222, key auth). Also copies `build/ob-kindle` when it changed. |
 
 ## First-time setup
 
@@ -32,6 +32,8 @@ Obsidian Sync ──(ob-kindle sync, mirror mode)──▶ /mnt/us/vault/*.md
 2. On the Kindle (SSH): `sh /mnt/us/ob-kindle.sh login`, then `setup`, then `sync`.
 3. On the Mac: `./deploy.sh <kindle-ip>`.
 4. Open **Bóveda** from the Kindle library.
+
+Later, if the Obsidian session expires (e.g. after a password change), sign in again from the app: **Cuenta → Iniciar sesión**. No SSH needed.
 
 ## Kindle notes (learned the hard way)
 
@@ -49,6 +51,7 @@ Obsidian Sync ──(ob-kindle sync, mirror mode)──▶ /mnt/us/vault/*.md
   - a random **token** generated at each start and written to `/var/local/mesquite/vault/token.js` (only the WAF loads it; web pages cannot read local files);
   - an **Origin** of the WAF (`null`/`file://`) or none, so pages in the Kindle browser are rejected;
   - a loopback **Host**, against DNS rebinding.
+- **Login from the app.** The only state-changing endpoints, `/api/login` and `/api/logout`, accept POST only (everything else is GET only), with the same token/origin/host checks and a 4 KB body limit. The password travels in the POST body, never in a URL; `vaultd` hands it to the client on stdin (never on a command line), logs only `ok=true/false`, and the client stores only the session token. Login/logout never run during a sync.
 - **No raw HTML from notes.** goldmark runs without `WithUnsafe`: `<script>`, `<iframe>`… in a note are dropped and `javascript:` links are not rendered.
 - **Pinned upstream.** `client/build.sh` refuses to build unless the `v0.3.6` tag still points to the reviewed commit.
 - **On the device:** the Obsidian session and vault key live in `/mnt/us/ob-home` (encrypted with a key stored on the same device; `/mnt/us` has no Unix permissions). If the Kindle is lost, sign that device out from your Obsidian account. KOReader's SSH server gives `root` to the authorized key; stop it when not needed.

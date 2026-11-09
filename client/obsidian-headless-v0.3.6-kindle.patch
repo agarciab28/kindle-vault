@@ -1,3 +1,35 @@
+diff --git a/src/internal/cli/root.go b/src/internal/cli/root.go
+index aeef15c..e1d0300 100644
+--- a/src/internal/cli/root.go
++++ b/src/internal/cli/root.go
+@@ -71,9 +71,24 @@ func writeLines(output io.Writer, lines ...string) {
+ func readPassword(input io.Reader) (string, error) {
+ 	termFD, ok := input.(*os.File)
+ 	if !ok || !term.IsTerminal(int(termFD.Fd())) {
+-		var password string
+-		_, _ = fmt.Scanln(&password)
+-		return password, nil
++		// Local patch: read the whole line so passwords may contain spaces
++		// (fmt.Scanln stops at the first one). One byte at a time, so a later
++		// prompt (2FA code) still finds its own line.
++		var sb strings.Builder
++		var b [1]byte
++		for {
++			n, err := input.Read(b[:])
++			if n == 1 {
++				if b[0] == '\n' {
++					break
++				}
++				sb.WriteByte(b[0])
++			}
++			if err != nil {
++				break
++			}
++		}
++		return strings.TrimRight(sb.String(), "\r"), nil
+ 	}
+ 	passwordBytes, err := term.ReadPassword(int(termFD.Fd()))
+ 	if err != nil {
 diff --git a/src/internal/cli/sync.go b/src/internal/cli/sync.go
 index 2263a2f..62353e4 100644
 --- a/src/internal/cli/sync.go

@@ -21,4 +21,13 @@ put "$HERE/kindle/Boveda.sh" /mnt/us/vault-app/Boveda.sh
 put "$HERE/kindle/install.sh" /mnt/us/vault-app/install.sh
 put "$HERE/kindle/uninstall.sh" /mnt/us/vault-app/uninstall.sh
 put "$HERE/kindle/ob-kindle.sh" /mnt/us/ob-kindle.sh
+# Sync client (client/build.sh): only when it changed; it is 31 MB.
+if [ -f "$BUILD/ob-kindle" ]; then
+  local_md5=$(md5 -q "$BUILD/ob-kindle" 2>/dev/null || md5sum "$BUILD/ob-kindle" | cut -d' ' -f1)
+  if [ "$(k "md5sum /mnt/us/ob-kindle 2>/dev/null | cut -d' ' -f1")" != "$local_md5" ]; then
+    echo "copying sync client…"
+    put "$BUILD/ob-kindle" /mnt/us/ob-kindle.new
+    k "chmod +x /mnt/us/ob-kindle.new && mv /mnt/us/ob-kindle.new /mnt/us/ob-kindle"
+  fi
+fi
 k "sh /mnt/us/vault-app/install.sh"

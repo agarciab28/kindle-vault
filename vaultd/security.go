@@ -44,6 +44,10 @@ func writeTokenJS(path, token string) error {
 	return os.Rename(tmp, path)
 }
 
+// postOnly lists the only endpoints that change state. The password travels in
+// the POST body, never in the URL (URLs can end up in logs).
+var postOnly = map[string]bool{"/api/login": true, "/api/logout": true}
+
 func allowedOrigin(origin string) bool {
 	return origin == "" || origin == "null" || origin == "file://"
 }
@@ -75,10 +79,12 @@ func guard(next http.Handler, token, listenAddr string) http.Handler {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
-		if r.Method != http.MethodGet {
+		// Read-only API, except the account actions, which are POST only.
+		if postOnly[r.URL.Path] != (r.Method == http.MethodPost) || (r.Method != http.MethodGet && r.Method != http.MethodPost) {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
+		r.Body = http.MaxBytesReader(w, r.Body, 4096)
 		got := r.URL.Query().Get("k")
 		if subtle.ConstantTimeCompare([]byte(got), []byte(token)) != 1 {
 			log.Printf("rejected request without a valid token: path=%s", r.URL.Path)

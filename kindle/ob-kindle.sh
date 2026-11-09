@@ -1,6 +1,6 @@
 #!/bin/sh
 # Bóveda de Obsidian en el Kindle: wrapper del cliente ob (Go, parcheado, solo lectura).
-# Uso desde kTerm:  sh /mnt/us/ob-kindle.sh login | setup | sync | status
+# Uso desde kTerm:  sh /mnt/us/ob-kindle.sh login | logout | whoami | setup | sync | status
 BIN=/mnt/us/ob-kindle
 VAULT=/mnt/us/vault
 export HOME=/mnt/us/ob-home
@@ -15,7 +15,18 @@ mirror_ok() {
 
 case "$1" in
   login)
-    "$BIN" login
+    # Interactive from kTerm/SSH. The app calls it as
+    #   login --accept-disclaimer --email X [--mfa N]   with the password on stdin.
+    shift
+    "$BIN" login "$@"
+    ;;
+  logout)
+    "$BIN" logout
+    ;;
+  whoami)
+    # Prints "Logged in as: <email>" if the saved session is valid; fails otherwise.
+    # stdin is empty, so it never starts a new login.
+    "$BIN" login < /dev/null
     ;;
   setup)
     # Nombre de la bóveda remota: VAULT_NAME="Otra" sh /mnt/us/ob-kindle.sh setup
@@ -35,6 +46,6 @@ case "$1" in
     "$BIN" sync-config --path "$VAULT"
     ;;
   *)
-    echo "Uso: sh /mnt/us/ob-kindle.sh login | setup | sync | status"
+    echo "Uso: sh /mnt/us/ob-kindle.sh login | logout | whoami | setup | sync | status"
     ;;
 esac

@@ -58,8 +58,47 @@ func syncBox(st SyncState) string {
 			fmt.Fprintf(&b, `<p class="muted">%d archivos actualizados en el último sync</p>`, st.LastChanged)
 		}
 	}
-	b.WriteString(`<p><a class="btn" href="#/sync">Sincronizar ahora</a></p></div>`)
+	if !st.Running && !st.LastOK && authError(st.LastError) {
+		b.WriteString(`<p><strong>Parece que la sesión de Obsidian venció.</strong></p><p><a class="btn" href="#/account/login">Iniciar sesión</a> <a class="btn" href="#/sync">Reintentar</a></p></div>`)
+		return b.String()
+	}
+	b.WriteString(`<p><a class="btn" href="#/sync">Sincronizar ahora</a> <a class="btn" href="#/account">Cuenta</a></p></div>`)
 	return b.String()
+}
+
+func loginForm() string {
+	return `<form class="login" onsubmit="return app.login(this)" autocomplete="off">` +
+		`<label for="lf-email">Correo</label>` +
+		`<input id="lf-email" name="email" type="text" autocapitalize="off" autocorrect="off" spellcheck="false">` +
+		`<label for="lf-pass">Contraseña</label>` +
+		`<input id="lf-pass" name="password" type="password">` +
+		`<label for="lf-mfa">Código de verificación <span class="muted">(solo si lo tienes activado)</span></label>` +
+		`<input id="lf-mfa" name="mfa" type="text" maxlength="10">` +
+		`<p><button type="submit">Iniciar sesión</button></p></form>` +
+		`<div id="loginmsg"></div>` +
+		`<p class="muted">La contraseña va directo a Obsidian: el Kindle no la guarda, solo la sesión. Si ya había una sesión en este Kindle, se reemplaza.</p>`
+}
+
+// AccountPage shows the Obsidian session. email is "" when there is none;
+// msg explains why it could not be checked (no Wi-Fi, timeout).
+func AccountPage(email string, checked bool, msg string, formOnly bool) Page {
+	var b strings.Builder
+	switch {
+	case formOnly:
+		b.WriteString(`<h2>Iniciar sesión en Obsidian</h2>`)
+		b.WriteString(loginForm())
+	case msg != "":
+		fmt.Fprintf(&b, `<div class="syncbox"><p><strong>%s</strong></p></div>`, esc(msg))
+		b.WriteString(`<p><a class="btn" href="javascript:app.retry()">Reintentar</a> <a class="btn" href="#/account/login">Iniciar sesión</a></p>`)
+	case email != "":
+		fmt.Fprintf(&b, `<div class="syncbox"><p>Sesión iniciada como <strong>%s</strong></p><p class="muted">Este Kindle descarga la bóveda en solo lectura: nunca sube ni borra nada.</p></div>`, esc(email))
+		b.WriteString(`<p><a class="btn" href="#/account/login">Iniciar sesión de nuevo</a></p>`)
+		b.WriteString(`<p><a class="btn" href="javascript:app.logout()">Cerrar sesión en este Kindle</a></p><div id="loginmsg"></div>`)
+	case checked:
+		b.WriteString(`<div class="syncbox"><p><strong>No hay una sesión activa, o ya venció.</strong></p><p class="muted">Inicia sesión para que la bóveda se siga actualizando. Las notas descargadas siguen aquí.</p></div>`)
+		b.WriteString(loginForm())
+	}
+	return Page{Title: "Cuenta", HTML: b.String()}
 }
 
 func noteItem(n *Note) string {
