@@ -26,9 +26,11 @@ on other models and firmware, and please report what you find.
 - **Your notes sit unencrypted on the Kindle.** The synced vault (`/mnt/us/vault`)
   and the Obsidian session and vault key (`/mnt/us/ob-home`) live on the storage
   the Kindle exposes over USB, which has no file permissions. Anyone who has the
-  unlocked Kindle can copy them. Set a device passcode, and if the Kindle is lost,
-  sign that device out from your Obsidian account. Signing out in the app
-  removes the notes and the vault key from the Kindle.
+  unlocked Kindle can copy them. Set a device passcode: it is what protects them
+  if the Kindle is lost. Signing out **in the app** removes the notes and the
+  vault key from the Kindle. Ending the session from somewhere else (for
+  example, by changing your Obsidian password) only stops new downloads: the
+  notes already on the Kindle stay there.
 - **Read-only depends on this project's patch.** The client is patched so that
   the `mirror` mode can only download (see [Security](#security)), and the
   wrapper refuses to sync in any other mode. The patch has its own tests, run on
