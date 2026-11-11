@@ -25,6 +25,7 @@ Obsidian Sync ──(ob-kindle sync, mirror mode)──▶ /mnt/us/vault/*.md
 | `waf/` | The app UI: `config.xml`, `index.html`, `app.js` (ES5), `app.css` (e-ink). |
 | `kindle/` | `Boveda.sh` (library launcher), `install.sh` / `uninstall.sh`, `ob-kindle.sh` (client wrapper: `login`, `logout`, `whoami`, `setup`, `sync`; `sync` refuses to run unless the mode is `mirror`). |
 | `deploy.sh` | Builds `vaultd` and installs everything over Wi-Fi (KOReader's SSH server, port 2222, key auth). Also copies `build/ob-kindle` when it changed. |
+| `kindle/cover.svg`, `cover.png` | The library cover. `deploy.sh` embeds the PNG in the launcher as its `# Icon:` header line. |
 
 ## First-time setup
 
@@ -42,6 +43,7 @@ Later, if the Obsidian session expires (e.g. after a password change), sign in a
 - **Title-bar back arrow** (new "Decanter" chrome): KPPChrome sets the LIPC property `invokeAction = KPP_BACK` on the app. `kindle.messaging.receiveMessage('invokeAction', cb)` publishes that property; without it the arrow silently fails (`LIPC access error status=8`).
 - `switchViewMode=fullscreen` does **not** hide the system bar.
 - KOReader in the foreground hides the WAF; close it to see the app.
+- Library cover: the launcher's `# Icon: data:image/png;base64,…` header (600×900). To change it, edit `kindle/cover.svg`, render it to `cover.png` at 600×900 (e.g. headless Chrome `--screenshot --window-size=600,900`) and deploy.
 - Obsidian's config dir on Linux is `~/.config/obsidian-headless/` (macOS: `~/.obsidian-headless/`); `sync-setup` resets the sync mode, so set `mirror` again before syncing.
 
 ## Security
