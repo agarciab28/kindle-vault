@@ -17,8 +17,9 @@ never uploads or deletes anything.
 > community-made client, with a small patch. If something breaks, do not contact
 > Obsidian support.
 
-**Status:** a personal project. It has been used on **one** device (Kindle
-Paperwhite 12th gen, firmware 5.20.2, jailbroken) with **one** vault.
+**Status: beta.** A personal project, used on **one** device (Kindle Paperwhite
+12th gen, firmware 5.20.2, jailbroken) with **one** vault. Expect rough edges
+on other models and firmware, and please report what you find.
 
 ## Read this before you use it
 
@@ -127,6 +128,7 @@ same and publish the release with its checksum.
 | `kindle/ob` | Wrapper around the sync client: `login`, `logout`, `whoami`, `vaults`, `current`, `setup`, `forget`, `sync`, `status`. `sync` refuses to run unless the mode is `mirror`; `logout`, `forget` and a change of vault remove the downloaded notes. Tested in `vaultd/wrapper_test.go` with a fake client. No `.sh` extension on purpose: the Kindle lists every `.sh` under `documents` as a book. |
 | `kindle/uninstall`, `vault.conf.example` | Removal, and the optional settings. |
 | `kindle/cover.svg`, `cover.png` | The library cover. `package.sh` embeds the PNG in the launcher as its `# Icon:` line. |
+| `kindleforge/` | Install and uninstall scripts in the format of the KindleForge package repository, and the registry entry. The install script checks the download against the release's checksum; the uninstall script signs out and removes everything. |
 
 ## Security
 

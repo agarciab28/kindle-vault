@@ -1,4 +1,4 @@
-An **unofficial**, read-only reader for an Obsidian vault on a jailbroken Kindle. Not affiliated with or supported by Obsidian. Please read ["Read this before you use it"](https://github.com/agarciab28/kindle-vault#read-this-before-you-use-it) first.
+**Beta.** An **unofficial**, read-only reader for an Obsidian vault on a jailbroken Kindle. Not affiliated with or supported by Obsidian. Used so far on one device and one vault. Please read ["Read this before you use it"](https://github.com/agarciab28/kindle-vault#read-this-before-you-use-it) first.
 
 ## Install
 

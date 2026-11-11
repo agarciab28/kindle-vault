@@ -1,0 +1,9 @@
+{
+    "name": "Vault (beta)",
+    "uri": "Vault",
+    "description": "Unofficial Read-Only Reader For An Obsidian Vault (Obsidian Sync)",
+    "author": "agarciab28",
+    "ABI": ["hf"],
+    "dependencies": [],
+    "tags": ["PRODUCTIVITY"]
+}
