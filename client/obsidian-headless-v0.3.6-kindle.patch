@@ -31,7 +31,7 @@ index aeef15c..e1d0300 100644
  	passwordBytes, err := term.ReadPassword(int(termFD.Fd()))
  	if err != nil {
 diff --git a/src/internal/cli/sync.go b/src/internal/cli/sync.go
-index 2263a2f..62353e4 100644
+index 2263a2f..a0d5fc8 100644
 --- a/src/internal/cli/sync.go
 +++ b/src/internal/cli/sync.go
 @@ -147,7 +147,12 @@ func newSyncSetupCommand(app *App) *cobra.Command {
@@ -48,7 +48,19 @@ index 2263a2f..62353e4 100644
  			if isEncrypted && password == "" {
  				fmt.Fprint(app.stdout, "Vault password: ")
  				pass, err := readPassword(app.stdin)
-@@ -387,10 +392,15 @@ func newSyncRunCommand(app *App) *cobra.Command {
+@@ -156,6 +161,11 @@ func newSyncSetupCommand(app *App) *cobra.Command {
+ 				}
+ 				password = pass
+ 			}
++			// Local patch: an encrypted vault cannot be attached without its password.
++			// Upstream went on with an empty one and failed later, less clearly.
++			if isEncrypted && password == "" {
++				return fmt.Errorf("this vault needs its encryption password")
++			}
+ 			if err := configpkg.ValidateConfigDir(configDir); err != nil {
+ 				return err
+ 			}
+@@ -387,10 +397,15 @@ func newSyncRunCommand(app *App) *cobra.Command {
  			if cfg == nil {
  				return fmt.Errorf("no sync config for %s", localPath)
  			}
@@ -96,6 +108,44 @@ index 10ee5af..cc8a7a1 100644
  	if err != nil {
  		return "", err
  	}
+diff --git a/src/internal/encryption/v0path_patch_test.go b/src/internal/encryption/v0path_patch_test.go
+new file mode 100644
+index 0000000..5559a3a
+--- /dev/null
++++ b/src/internal/encryption/v0path_patch_test.go
+@@ -0,0 +1,32 @@
++package encryption
++
++import "testing"
++
++// Local patch: legacy (v0) path encryption prefixes its 12-byte IV, so paths
++// written by the official apps can be read back.
++func TestV0PathPatchRoundTrip(t *testing.T) {
++	key := make([]byte, 32)
++	for i := range key {
++		key[i] = byte(i)
++	}
++	enc, err := newEncryptionV0(key)
++	if err != nil {
++		t.Fatal(err)
++	}
++	for _, p := range []string{"note.md", "Carpeta/Ñandú y café.md", "a/b/c/long name with spaces.png"} {
++		c, err := enc.EncryptPath(p)
++		if err != nil {
++			t.Fatal(err)
++		}
++		got, err := enc.DecryptPath(c)
++		if err != nil || got != p {
++			t.Errorf("round trip of %q: got %q, err %v", p, got, err)
++		}
++		if again, _ := enc.EncryptPath(p); again != c {
++			t.Errorf("path encryption of %q is not deterministic", p)
++		}
++	}
++	if _, err := enc.DecryptPath("00ff"); err == nil {
++		t.Error("a too-short ciphertext was accepted")
++	}
++}
 diff --git a/src/internal/sync/engine.go b/src/internal/sync/engine.go
 index 5c345f2..3d05028 100644
 --- a/src/internal/sync/engine.go
@@ -152,6 +202,107 @@ index 5c345f2..3d05028 100644
 +		}
 +	}
 +	return out
++}
+diff --git a/src/internal/sync/readonly_patch_test.go b/src/internal/sync/readonly_patch_test.go
+new file mode 100644
+index 0000000..8bedced
+--- /dev/null
++++ b/src/internal/sync/readonly_patch_test.go
+@@ -0,0 +1,95 @@
++package sync
++
++// Tests for the local "read-only" patch: in pull/mirror mode a sync must never
++// change the remote vault.
++
++import (
++	"testing"
++
++	"github.com/rs/zerolog"
++
++	"github.com/Belphemur/obsidian-headless/internal/model"
++)
++
++func TestReadOnlyPatchModes(t *testing.T) {
++	for mode, want := range map[string]bool{"pull": true, "mirror": true, "bidirectional": false, "": false} {
++		e := &Engine{Config: model.SyncConfig{SyncMode: mode}}
++		if got := e.isReadOnlyMode(); got != want {
++			t.Errorf("isReadOnlyMode(%q) = %v, want %v", mode, got, want)
++		}
++	}
++}
++
++// Whatever the planner asks for, the read-only plan only downloads or deletes
++// local files: no upload, remote deletion or merge survives.
++func TestReadOnlyPatchPlanNeverWritesRemote(t *testing.T) {
++	e := &Engine{Config: model.SyncConfig{SyncMode: "mirror"}, Logger: zerolog.Nop()}
++	remote := map[string]model.FileRecord{
++		"both.md":    {Path: "both.md"},
++		"deleted.md": {Path: "deleted.md", Deleted: true},
++	}
++	kinds := []syncActionKind{
++		syncActionDownload, syncActionUpload, syncActionDeleteRemote,
++		syncActionDeleteLocal, syncActionMergeText, syncActionMergeJSON,
++	}
++	var plan []syncAction
++	for _, k := range kinds {
++		for _, p := range []string{"both.md", "deleted.md", "local-only.md"} {
++			plan = append(plan, syncAction{Path: p, Kind: k})
++		}
++	}
++	out := e.readOnlyPlan(plan, remote)
++	if len(out) == 0 {
++		t.Fatal("read-only plan is empty: downloads were dropped")
++	}
++	restored := 0
++	for _, a := range out {
++		if a.Kind != syncActionDownload && a.Kind != syncActionDeleteLocal {
++			t.Errorf("read-only plan kept a remote write: %s %q", a.Kind, a.Path)
++		}
++		if a.Path == "local-only.md" && a.Kind != syncActionDownload && a.Kind != syncActionDeleteLocal {
++			t.Errorf("local-only file would be pushed: %s", a.Kind)
++		}
++		if a.Path == "both.md" && a.Kind == syncActionDownload {
++			restored++
++		}
++	}
++	// both.md: 1 planned download + 4 writes (upload, remote delete, 2 merges) turned into downloads.
++	if restored != 5 {
++		t.Errorf("writes to a file that exists remotely should become downloads: got %d downloads, want 5", restored)
++	}
++	// A write to a file that is not on the server (local only, or deleted there) is dropped.
++	for _, a := range out {
++		if a.Path != "both.md" && a.Kind == syncActionDownload {
++			found := false
++			for _, p := range plan {
++				if p.Path == a.Path && p.Kind == syncActionDownload {
++					found = true
++				}
++			}
++			if !found {
++				t.Errorf("unexpected download of %q", a.Path)
++			}
++		}
++	}
++}
++
++// Every syncActionKind must be known to this test: a new upstream kind would
++// fall into readOnlyPlan's default branch, which is safe, but should be reviewed.
++func TestReadOnlyPatchKnowsEveryActionKind(t *testing.T) {
++	if got := syncActionMergeJSON; int(got) != 5 {
++		t.Fatalf("syncActionKind values changed (MergeJSON = %d): review readOnlyPlan", int(got))
++	}
++}
++
++// The second barrier: even if a write reached the session, it is refused
++// before anything is sent (the session here has no connection at all).
++func TestReadOnlyPatchSessionRefusesWrites(t *testing.T) {
++	s := &remoteSession{readOnly: true, Logger: zerolog.Nop()}
++	if err := s.push(model.FileRecord{Path: "note.md"}, []byte("local edit")); err == nil {
++		t.Error("push was not refused in read-only mode")
++	}
++	if err := s.delete("note.md"); err == nil {
++		t.Error("remote delete was not refused in read-only mode")
++	}
 +}
 diff --git a/src/internal/sync/session.go b/src/internal/sync/session.go
 index 8623119..f0b6b7d 100644

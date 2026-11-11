@@ -1,20 +1,16 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Bóveda</title>
+<title>Vault</title>
 <link rel="stylesheet" href="app.css">
 </head>
 <body>
 <!-- The system title bar (back / title / close) is configured from app.js. -->
-<div id="menu">
-  <a href="#/">Inicio</a>
-  <a href="#/search">Buscar</a>
-  <a href="#/tags">Tags</a>
-  <a href="#/sync">Sincronizar</a>
-</div>
-<div id="content"><p class="muted">Cargando…</p></div>
+<!-- The menu is drawn by app.js in the interface language. -->
+<div id="menu"></div>
+<div id="content"><p class="muted">…</p></div>
 <div id="pager">
   <a href="javascript:app.page(-1)">▲</a>
   <a href="javascript:app.page(1)">▼</a>

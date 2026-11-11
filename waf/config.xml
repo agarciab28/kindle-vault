@@ -1,9 +1,10 @@
 <?xml version="1.0"?>
 <widget xmlns="http://www.w3.org/ns/widgets" xmlns:kindle="http://kindle.amazon.com/ns/widget-extensions"
-    id="com.alexgar.vault" version="1.0" viewmodes="application">
+    id="com.alexgar.vault" version="1.1" viewmodes="application">
 
-    <name xml:lang="en">Bóveda</name>
-    <name xml:lang="es">Bóveda</name>
+    <name xml:lang="en">Vault</name>
+    <name xml:lang="es">Vault</name>
+    <description xml:lang="en">Unofficial read-only reader for an Obsidian vault</description>
     <description xml:lang="es">Lector no oficial de una bóveda de Obsidian (solo lectura)</description>
 
     <content src="index.html" />

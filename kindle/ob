@@ -1,0 +1,134 @@
+#!/bin/sh
+# Vault: wrapper around the sync client (patched obsidian-headless, read-only).
+# vaultd calls it; it also works by hand from kTerm or SSH:
+#   sh /mnt/us/documents/vault-app/ob login | logout | whoami | vaults | current | setup <vault> | forget | sync | status
+# (No .sh extension on purpose: the Kindle lists every .sh under documents as a book.)
+#
+# One rule runs through it: this Kindle only ever shows the notes of the vault
+# it is attached to. Signing out or changing vault removes the downloaded notes
+# (from the Kindle only; a read-only sync never touches Obsidian).
+HERE=$(cd "$(dirname "$0")" && pwd)
+BIN="$HERE/ob-kindle"
+# The two folders can be moved for tests; on a Kindle they are fixed.
+VAULT="${VAULT_NOTES_DIR:-/mnt/us/vault}"
+export HOME="${VAULT_CLIENT_HOME:-/mnt/us/ob-home}"
+# The Kindle only ships Amazon's CAs: the package brings a standard bundle.
+export SSL_CERT_FILE="$HERE/cacert.pem"
+mkdir -p "$HOME" "$VAULT"
+# Optional settings (vault.conf.example). What comes from the environment wins.
+ENV_VAULT_NAME="${VAULT_NAME:-}"
+[ -f /mnt/us/vault-data/vault.conf ] && . /mnt/us/vault-data/vault.conf
+[ -n "$ENV_VAULT_NAME" ] && VAULT_NAME="$ENV_VAULT_NAME"
+
+# The vault attached to this Kindle, as "id<TAB>name" (nothing if there is none).
+current() {
+  "$BIN" sync-list-local 2>/dev/null | awk -F'\t' -v p="$VAULT" '$3 == p { print $1 "\t" $2 }' | head -n 1
+}
+mirror_ok() {
+  # On Linux the config lives in ~/.config/obsidian-headless (on macOS, ~/.obsidian-headless).
+  grep -q '"syncMode": *"mirror"' "$HOME"/.config/obsidian-headless/sync/*/config.json "$HOME"/.obsidian-headless/sync/*/config.json 2>/dev/null
+}
+# Removes every downloaded note from this Kindle (never anything in Obsidian).
+clear_notes() {
+  [ -n "$VAULT" ] && [ -d "$VAULT" ] || return 0
+  for f in "$VAULT"/* "$VAULT"/.[!.]* "$VAULT"/..?*; do
+    if [ -e "$f" ] || [ -L "$f" ]; then rm -rf "$f"; fi
+  done
+}
+# Detaches the vault (its link and its key) and removes its notes from this Kindle.
+forget() {
+  if [ -n "$(current)" ]; then
+    "$BIN" sync-unlink --path "$VAULT" || return 1
+  fi
+  clear_notes
+}
+
+case "${1:-}" in
+  login)
+    # Interactive by hand. The app calls it as
+    #   login --accept-disclaimer --email X [--mfa N]   with the password on stdin.
+    shift
+    "$BIN" login "$@"
+    ;;
+  logout)
+    # Signing out also forgets the vault and removes its notes from this Kindle.
+    "$BIN" logout || exit 1
+    forget || exit 1
+    ;;
+  whoami)
+    # Prints "Logged in as: <email>" if the saved session is valid; fails otherwise.
+    # stdin is empty, so it never starts a new login.
+    "$BIN" login < /dev/null
+    ;;
+  vaults)
+    # The account's vaults: id, name, server.
+    "$BIN" sync-list-remote
+    ;;
+  current)
+    current
+    ;;
+  forget)
+    forget || exit 1
+    echo "Forgotten"
+    ;;
+  setup)
+    # setup <vault id or name>   (or VAULT_NAME in vault.conf)
+    # The vault's own encryption password, if it has one, is one line on stdin.
+    shift
+    TARGET="${1:-${VAULT_NAME:-}}"
+    if [ -z "$TARGET" ]; then
+      echo "Which vault? These are the ones in your account (id, name, server):"
+      "$BIN" sync-list-remote
+      echo 'Then run:  sh /mnt/us/documents/vault-app/ob setup "<id or name>"'
+      exit 1
+    fi
+    VPASS=""
+    if [ -t 0 ]; then printf 'Vault password (just Enter if the vault has none): ' >&2; fi
+    IFS= read -r VPASS || true
+    attach() { # attach the target vault to the folder $1
+      printf '%s\n' "$VPASS" | "$BIN" sync-setup --vault "$TARGET" --path "$1" --device-name "${DEVICE_NAME:-Kindle}"
+    }
+    CUR=$(current)
+    CUR_ID=$(printf '%s' "$CUR" | cut -f1)
+    CUR_NAME=$(printf '%s' "$CUR" | cut -f2)
+    if [ -z "$CUR_ID" ] || { [ "$TARGET" != "$CUR_ID" ] && [ "$TARGET" != "$CUR_NAME" ]; }; then
+      if [ -n "$CUR_ID" ]; then
+        # Changing vault. Check the new one first (access and password) against a
+        # scratch folder, so a mistake leaves the current vault exactly as it was.
+        CHECK="$HOME/setup-check"
+        rm -rf "$CHECK"
+        if ! attach "$CHECK"; then
+          "$BIN" sync-unlink --path "$CHECK" >/dev/null 2>&1
+          rm -rf "$CHECK"
+          exit 1
+        fi
+        rm -rf "$CHECK"
+        # One vault per Kindle: the previous one goes, with its notes.
+        forget || exit 1
+      fi
+      attach "$VAULT" || exit 1
+      # Whatever was in the folder before did not come from this vault.
+      [ -z "$CUR_ID" ] && clear_notes
+    fi
+    # sync-setup resets the mode: set mirror (read-only) BEFORE any sync.
+    "$BIN" sync-config --path "$VAULT" --mode mirror --configs "" || exit 1
+    echo "Configured"
+    ;;
+  sync)
+    if [ -z "$(current)" ]; then
+      echo "STOP: no vault chosen yet. Choose one in the app, or run: ob setup <vault>"
+      exit 1
+    fi
+    if ! mirror_ok; then
+      echo "STOP: the sync mode is not mirror (read-only). Run: ob setup"
+      exit 1
+    fi
+    "$BIN" sync --path "$VAULT"
+    ;;
+  status)
+    "$BIN" sync-config --path "$VAULT"
+    ;;
+  *)
+    echo "Usage: ob login | logout | whoami | vaults | current | setup <vault> | forget | sync | status"
+    ;;
+esac

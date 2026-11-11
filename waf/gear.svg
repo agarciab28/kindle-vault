@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="96" height="96" viewBox="-48 -48 96 96">
+  <rect x="-48" y="-48" width="96" height="96" fill="#fff"/>
+  <g fill="#000">
+    <circle r="31"/>
+    <rect id="t" x="-9.5" y="-45" width="19" height="22" rx="3"/>
+    <use xlink:href="#t" transform="rotate(45)"/><use xlink:href="#t" transform="rotate(90)"/>
+    <use xlink:href="#t" transform="rotate(135)"/><use xlink:href="#t" transform="rotate(180)"/>
+    <use xlink:href="#t" transform="rotate(225)"/><use xlink:href="#t" transform="rotate(270)"/>
+    <use xlink:href="#t" transform="rotate(315)"/>
+  </g>
+  <circle r="13" fill="#fff"/>
+</svg>

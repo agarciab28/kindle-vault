@@ -1,7 +1,8 @@
-# Optional settings for Bóveda. Copy to /mnt/us/vault-app/boveda.conf on the Kindle.
+# Optional settings for Vault. Copy to /mnt/us/vault-data/vault.conf on the Kindle.
 # Shell syntax, one setting per line, Unix line endings.
 
-# The vault to sync, by name or id. "sh /mnt/us/ob-kindle.sh vaults" lists yours.
+# You normally choose the vault in the app. This is only the default for
+# "ob setup" when it is run by hand without a vault.
 #VAULT_NAME="My notes"
 
 # Time zone for the dates the app shows, if the Kindle's own is wrong or unset.

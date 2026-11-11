@@ -26,14 +26,15 @@ func noteHref(p string) string   { return "#/note/" + url.PathEscape(p) }
 func folderHref(p string) string { return "#/folder/" + url.PathEscape(p) }
 func tagHref(t string) string    { return "#/tag/" + url.PathEscape(t) }
 
-// RenderNote converts an Obsidian note to an HTML fragment.
-func (v *Vault) RenderNote(n *Note) string {
+// RenderNote converts an Obsidian note to an HTML fragment. The language only
+// affects what the app itself adds (default callout titles), never the note.
+func (v *Vault) RenderNote(n *Note, l Lang) string {
 	src := v.rewriteWikiLinks(n.Body)
 	var buf bytes.Buffer
 	if err := md.Convert([]byte(src), &buf); err != nil {
 		return "<pre>" + html.EscapeString(n.Body) + "</pre>"
 	}
-	return callouts(buf.String())
+	return callouts(buf.String(), l)
 }
 
 // rewriteWikiLinks turns [[Target#Heading|Alias]] into Markdown links (or a
@@ -85,24 +86,27 @@ func escapeMdLabel(s string) string {
 
 var calloutRe = regexp.MustCompile(`<blockquote>\s*<p>\[!([A-Za-z-]+)\][+-]?[ \t]*([^\n<]*)\n?`)
 
-var calloutNames = map[string]string{
-	"note": "Nota", "info": "Info", "tip": "Consejo", "hint": "Consejo", "important": "Importante",
-	"warning": "Atención", "caution": "Atención", "attention": "Atención", "danger": "Peligro",
-	"error": "Error", "bug": "Bug", "example": "Ejemplo", "quote": "Cita", "cite": "Cita",
-	"question": "Pregunta", "faq": "Pregunta", "help": "Pregunta", "success": "Hecho",
-	"check": "Hecho", "done": "Hecho", "failure": "Falló", "fail": "Falló", "missing": "Falta",
-	"abstract": "Resumen", "summary": "Resumen", "tldr": "Resumen", "todo": "Pendiente",
+// calloutKey maps a callout type to the key of its default title (i18n.go).
+var calloutKey = map[string]string{
+	"note": "note", "info": "info", "tip": "tip", "hint": "tip", "important": "important",
+	"warning": "warning", "caution": "warning", "attention": "warning", "danger": "danger",
+	"error": "error", "bug": "bug", "example": "example", "quote": "quote", "cite": "quote",
+	"question": "question", "faq": "question", "help": "question", "success": "success",
+	"check": "success", "done": "success", "failure": "failure", "fail": "failure", "missing": "missing",
+	"abstract": "abstract", "summary": "abstract", "tldr": "abstract", "todo": "todo",
 }
 
-// callouts turns Obsidian callouts (> [!type] Title) into styled boxes.
-func callouts(h string) string {
+// callouts turns Obsidian callouts (> [!type] Title) into styled boxes. A callout
+// with no title of its own gets the type's name in the interface language.
+func callouts(h string, l Lang) string {
 	return calloutRe.ReplaceAllStringFunc(h, func(m string) string {
 		s := calloutRe.FindStringSubmatch(m)
 		kind := strings.ToLower(s[1])
 		title := strings.TrimSpace(s[2])
 		if title == "" {
-			title = calloutNames[kind]
-			if title == "" {
+			if key, ok := calloutKey[kind]; ok {
+				title = l.T("callout." + key)
+			} else {
 				title = strings.ToUpper(kind[:1]) + kind[1:]
 			}
 		}

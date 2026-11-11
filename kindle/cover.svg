@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="600" height="900" viewBox="0 0 600 900">
-  <!-- Library cover for Bóveda: a vault door holding a graph of linked notes.
+  <!-- Library cover for Vault: a vault door holding a graph of linked notes.
        Rendered to cover.png (see README); deploy.sh embeds it in the launcher. -->
   <rect width="600" height="900" fill="#000"/>
   <g fill="#fff">
@@ -26,7 +26,7 @@
     <circle cx="352" cy="414" r="16"/><circle cx="236" cy="404" r="14"/>
     <circle cx="302" cy="226" r="11"/><circle cx="412" cy="356" r="11"/><circle cx="196" cy="338" r="11"/>
   </g>
-  <text x="300" y="690" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" font-weight="bold" font-size="112" fill="#fff" text-anchor="middle">Bóveda</text>
+  <text x="300" y="690" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" font-weight="bold" font-size="112" fill="#fff" text-anchor="middle">Vault</text>
   <rect x="250" y="728" width="100" height="6" fill="#fff"/>
-  <text x="300" y="790" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" font-size="36" fill="#fff" text-anchor="middle">Mis notas de Obsidian</text>
+  <text x="300" y="790" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" font-size="36" fill="#fff" text-anchor="middle">My Obsidian notes</text>
 </svg>

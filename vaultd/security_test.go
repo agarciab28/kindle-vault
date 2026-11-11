@@ -12,6 +12,7 @@ func TestGuard(t *testing.T) {
 	ok := func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) }
 	mux.HandleFunc("/api/home", ok)
 	mux.HandleFunc("/api/login", ok)
+	mux.HandleFunc("/api/setup", ok)
 	h := guard(mux, "tok", "127.0.0.1:8317")
 
 	for _, c := range []struct {
@@ -22,6 +23,8 @@ func TestGuard(t *testing.T) {
 		{"app request, file origin", "GET", "/api/home?k=tok", "127.0.0.1:8317", "file://", 200},
 		{"app request, null origin", "GET", "/api/home?k=tok", "127.0.0.1:8317", "null", 200},
 		{"login is a POST", "POST", "/api/login?k=tok", "127.0.0.1:8317", "null", 200},
+		{"choosing a vault is a POST", "POST", "/api/setup?k=tok", "127.0.0.1:8317", "null", 200},
+		{"choosing a vault by GET", "GET", "/api/setup?k=tok", "127.0.0.1:8317", "", 405},
 		{"no token", "GET", "/api/home", "127.0.0.1:8317", "", 401},
 		{"wrong token", "GET", "/api/home?k=nope", "127.0.0.1:8317", "", 401},
 		{"a web page", "GET", "/api/home?k=tok", "127.0.0.1:8317", "https://evil.example", 403},

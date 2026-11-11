@@ -16,7 +16,7 @@ import (
 // opened in the Kindle browser. Three checks keep the vault private:
 //
 //  1. Token: a random value generated at every start and written to token.js
-//     inside the WAF folder. Only the Bóveda app loads that file; a web page
+//     inside the WAF folder. Only the Vault app loads that file; a web page
 //     cannot read local files, so it cannot learn the token.
 //  2. Origin: browsers always send Origin on cross-origin requests. Only the
 //     WAF (file://, reported as "null") or no Origin at all is accepted.
@@ -46,7 +46,7 @@ func writeTokenJS(path, token string) error {
 
 // postOnly lists the only endpoints that change state. The password travels in
 // the POST body, never in the URL (URLs can end up in logs).
-var postOnly = map[string]bool{"/api/login": true, "/api/logout": true}
+var postOnly = map[string]bool{"/api/login": true, "/api/logout": true, "/api/setup": true}
 
 func allowedOrigin(origin string) bool {
 	return origin == "" || origin == "null" || origin == "file://"

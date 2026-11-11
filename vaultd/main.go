@@ -1,4 +1,4 @@
-// vaultd serves a synced Obsidian vault to the Kindle "Bóveda" app (a WAF).
+// vaultd serves a synced Obsidian vault to the Kindle "Vault" app (a WAF).
 //
 // It listens on localhost only, renders Markdown notes to HTML fragments,
 // and runs the read-only Obsidian Sync client on demand and periodically.
@@ -18,9 +18,8 @@ import (
 func main() {
 	vaultDir := flag.String("vault", "/mnt/us/vault", "synced vault folder")
 	addr := flag.String("addr", "127.0.0.1:8317", "listen address (keep it on localhost)")
-	state := flag.String("state", "/mnt/us/vault-app/state.json", "sync state file")
-	syncCmd := flag.String("sync", "/bin/sh /mnt/us/ob-kindle.sh sync", "sync command")
-	accountCmd := flag.String("account", "/bin/sh /mnt/us/ob-kindle.sh", "client wrapper for login / logout / whoami")
+	state := flag.String("state", "/mnt/us/vault-data/state.json", "sync state file")
+	accountCmd := flag.String("client", "/bin/sh /mnt/us/documents/vault-app/ob", "client wrapper (login, logout, whoami, vaults, current, setup, sync)")
 	wifiCmd := flag.String("wifi", "lipc-get-prop com.lab126.wifid cmState", "command that prints CONNECTED when online (empty: always online)")
 	homeCmd := flag.String("home", "lipc-set-prop com.lab126.appmgrd start app://com.lab126.booklet.home", "command that returns to the Kindle home")
 	tz := flag.String("tz", "", "time zone for dates, e.g. Europe/Madrid (default: the device's)")
@@ -47,52 +46,72 @@ func main() {
 	}
 	log.Printf("indexed %d notes from %s", v.Count(), *vaultDir)
 
-	s := NewSyncer(*state, strings.Fields(*syncCmd), strings.Fields(*wifiCmd), func() {
+	client := strings.Fields(*accountCmd)
+	s := NewSyncer(*state, append(append([]string{}, client...), "sync"), strings.Fields(*wifiCmd), func() {
 		if err := v.Reindex(); err != nil {
 			log.Printf("reindex: %v", err)
 		}
 		log.Printf("sync finished; %d notes", v.Count())
 	})
 
+	acct := &Account{command: client, syncer: s, onNotesChanged: func() {
+		if err := v.Reindex(); err != nil {
+			log.Printf("reindex: %v", err)
+		}
+	}}
+	go acct.RefreshVault()
+
 	if *every > 0 {
 		go func() {
 			time.Sleep(20 * time.Second)
 			for {
-				s.MaybeStart(*every)
+				if acct.Vault().ID != "" {
+					s.MaybeStart(*every)
+				}
 				time.Sleep(5 * time.Minute)
 			}
 		}()
 	}
 
 	mux := http.NewServeMux()
-	page := func(w http.ResponseWriter, p Page, ok bool) {
+	// The interface language comes with every request (the app remembers it).
+	lang := func(r *http.Request) Lang { return parseLang(r.URL.Query().Get("l")) }
+	page := func(w http.ResponseWriter, r *http.Request, p Page, ok bool) {
 		if !ok {
-			p = Page{Title: "No encontrado", HTML: `<p>No existe esa nota o carpeta.</p><p><a href="#/">Volver al inicio</a></p>`}
+			l := lang(r)
+			p = Page{Title: l.T("notFound"), HTML: `<p>` + esc(l.T("notFoundBody")) + `</p><p><a href="#/">` + esc(l.T("backHome")) + `</a></p>`}
 		}
 		writeJSON(w, p)
 	}
 	mux.HandleFunc("/api/home", func(w http.ResponseWriter, r *http.Request) {
-		s.MaybeStart(10 * time.Minute) // opening the app refreshes if it has been a while
-		page(w, HomePage(v, s.State()), true)
+		vault := acct.Vault()
+		if vault.ID != "" {
+			s.MaybeStart(10 * time.Minute) // opening the app refreshes if it has been a while
+		}
+		page(w, r, HomePage(lang(r), v, s.State(), vault), true)
 	})
 	mux.HandleFunc("/api/folder", func(w http.ResponseWriter, r *http.Request) {
-		p, ok := FolderPage(v, r.URL.Query().Get("p"))
-		page(w, p, ok)
+		p, ok := FolderPage(lang(r), v, r.URL.Query().Get("p"))
+		page(w, r, p, ok)
 	})
 	mux.HandleFunc("/api/note", func(w http.ResponseWriter, r *http.Request) {
-		p, ok := NotePage(v, r.URL.Query().Get("p"))
-		page(w, p, ok)
+		p, ok := NotePage(lang(r), v, r.URL.Query().Get("p"))
+		page(w, r, p, ok)
 	})
-	mux.HandleFunc("/api/tags", func(w http.ResponseWriter, r *http.Request) { page(w, TagsPage(v), true) })
+	mux.HandleFunc("/api/tags", func(w http.ResponseWriter, r *http.Request) { page(w, r, TagsPage(lang(r), v), true) })
 	mux.HandleFunc("/api/tag", func(w http.ResponseWriter, r *http.Request) {
-		page(w, TagPage(v, r.URL.Query().Get("t")), true)
+		page(w, r, TagPage(lang(r), v, r.URL.Query().Get("t")), true)
 	})
 	mux.HandleFunc("/api/search", func(w http.ResponseWriter, r *http.Request) {
-		page(w, SearchPage(v, r.URL.Query().Get("q")), true)
+		page(w, r, SearchPage(lang(r), v, r.URL.Query().Get("q")), true)
 	})
 	mux.HandleFunc("/api/sync", func(w http.ResponseWriter, r *http.Request) {
 		if !s.Online() {
-			writeJSON(w, map[string]any{"started": false, "error": "Sin Wi-Fi", "state": s.State()})
+			writeJSON(w, map[string]any{"started": false, "error": lang(r).T("noWifi"), "state": s.State()})
+			return
+		}
+		if acct.Vault().ID == "" && acct.RefreshVault().ID == "" {
+			writeJSON(w, map[string]any{"started": false, "error": lang(r).T("noVault"), "needVault": true, "state": s.State()})
 			return
 		}
 		started := s.Start()
@@ -101,36 +120,63 @@ func main() {
 	mux.HandleFunc("/api/status", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]any{"state": s.State(), "notes": v.Count(), "online": s.Online()})
 	})
-	acct := &Account{command: strings.Fields(*accountCmd), syncer: s}
 	mux.HandleFunc("/api/account", func(w http.ResponseWriter, r *http.Request) {
+		l := lang(r)
 		if r.URL.Query().Get("form") == "1" {
-			page(w, AccountPage("", false, "", true), true)
+			page(w, r, AccountPage(l, "", false, "", true, acct.Vault()), true)
 			return
 		}
 		if !s.Online() {
-			page(w, AccountPage("", false, "Sin Wi-Fi: no se puede revisar la sesión ahora.", false), true)
+			page(w, r, AccountPage(l, "", false, l.T("noWifiSession"), false, acct.Vault()), true)
 			return
 		}
 		email, err := acct.Status()
 		msg := ""
 		if err != nil {
-			msg = err.Error()
+			msg = acct.errText(l, err)
 		}
-		page(w, AccountPage(email, true, msg, false), true)
+		page(w, r, AccountPage(l, email, true, msg, false, acct.RefreshVault()), true)
 	})
-	mux.HandleFunc("/api/login", func(w http.ResponseWriter, r *http.Request) {
-		if err := r.ParseForm(); err != nil {
-			writeJSON(w, AccountResult{Message: "Datos inválidos."})
+	mux.HandleFunc("/api/settings", func(w http.ResponseWriter, r *http.Request) {
+		page(w, r, SettingsPage(lang(r), acct.Vault()), true)
+	})
+	mux.HandleFunc("/api/vaults", func(w http.ResponseWriter, r *http.Request) {
+		l := lang(r)
+		if !s.Online() {
+			page(w, r, VaultPage(l, acct.Vault(), nil, l.T("offline")), true)
 			return
 		}
-		res := acct.Login(r.PostForm.Get("email"), r.PostForm.Get("password"), r.PostForm.Get("mfa"),
+		vaults, err := acct.Vaults()
+		msg := ""
+		if err != nil {
+			msg = l.T("vaultsFailed", acct.errText(l, err))
+		}
+		page(w, r, VaultPage(l, acct.RefreshVault(), vaults, msg), true)
+	})
+	mux.HandleFunc("/api/login", func(w http.ResponseWriter, r *http.Request) {
+		l := lang(r)
+		if err := r.ParseForm(); err != nil {
+			writeJSON(w, AccountResult{Message: l.T("invalidData")})
+			return
+		}
+		res := acct.Login(l, r.PostForm.Get("email"), r.PostForm.Get("password"), r.PostForm.Get("mfa"),
 			r.PostForm.Get("accept") == "1")
 		log.Printf("account: login ok=%v", res.OK) // never the email or password
 		writeJSON(w, res)
 	})
 	mux.HandleFunc("/api/logout", func(w http.ResponseWriter, r *http.Request) {
-		res := acct.Logout()
+		res := acct.Logout(lang(r))
 		log.Printf("account: logout ok=%v", res.OK)
+		writeJSON(w, res)
+	})
+	mux.HandleFunc("/api/setup", func(w http.ResponseWriter, r *http.Request) {
+		l := lang(r)
+		if err := r.ParseForm(); err != nil {
+			writeJSON(w, AccountResult{Message: l.T("invalidData")})
+			return
+		}
+		res := acct.Setup(l, r.PostForm.Get("vault"), r.PostForm.Get("password"))
+		log.Printf("account: vault setup ok=%v", res.OK) // never the vault or its password
 		writeJSON(w, res)
 	})
 	mux.HandleFunc("/api/exit", func(w http.ResponseWriter, r *http.Request) {

@@ -1,0 +1,23 @@
+#!/bin/sh
+# Removes Vault. Run it on the Kindle (kTerm or SSH):
+#   sh /mnt/us/documents/vault-app/uninstall          keeps your notes and your Obsidian session
+#   sh /mnt/us/documents/vault-app/uninstall --all    also removes the downloaded notes, the session and the settings
+# (No .sh extension on purpose: the Kindle lists every .sh under documents as a book.)
+ID=com.alexgar.vault
+DB=/var/local/appreg.db
+killall vaultd 2>/dev/null || true
+sqlite3 "$DB" <<SQL
+BEGIN;
+DELETE FROM associations WHERE handlerId='$ID';
+DELETE FROM properties WHERE handlerId='$ID';
+DELETE FROM handlerIds WHERE handlerId='$ID';
+COMMIT;
+SQL
+rm -rf /var/local/mesquite/vault /var/local/mesquite/$ID /mnt/us/.active_content_sandbox/vault
+if [ "${1:-}" = "--all" ]; then
+  # Sign out in the app first if you can: deleting the session file does not end it at Obsidian.
+  rm -rf /mnt/us/vault /mnt/us/ob-home /mnt/us/vault-data
+  echo "Removed the downloaded notes, the Obsidian session and the settings."
+fi
+rm -rf /mnt/us/documents/Vault.sh /mnt/us/documents/Vault.sh.sdr /mnt/us/documents/vault-app
+echo "Vault uninstalled."

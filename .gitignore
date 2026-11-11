@@ -13,4 +13,4 @@ state.json
 ob-home/
 
 # Personal settings for the device
-boveda.conf
+vault.conf

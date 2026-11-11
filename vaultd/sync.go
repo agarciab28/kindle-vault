@@ -21,12 +21,12 @@ type SyncState struct {
 	Running     bool      `json:"running"`
 }
 
-// Syncer runs the read-only Obsidian Sync client (through ob-kindle.sh).
+// Syncer runs the read-only Obsidian Sync client (through the "ob" wrapper).
 type Syncer struct {
 	mu        sync.Mutex
 	state     SyncState
 	statePath string
-	command   []string // e.g. ["/bin/sh", "/mnt/us/ob-kindle.sh", "sync"]
+	command   []string // e.g. ["/bin/sh", "/mnt/us/documents/vault-app/ob", "sync"]
 	wifiCmd   []string // e.g. ["lipc-get-prop", "com.lab126.wifid", "cmState"]; empty = always online
 	onDone    func()
 	busy      bool // an account operation (login/logout) is running
@@ -115,7 +115,7 @@ func (s *Syncer) run() {
 	s.mu.Lock()
 	s.state.Running = false
 	s.state.LastChanged = strings.Count(text, "downloaded file") + strings.Count(text, "deleted local file")
-	if err != nil || strings.Contains(text, "ALTO:") {
+	if err != nil || strings.Contains(text, "STOP:") { // "STOP:" is the wrapper refusing to sync
 		s.state.LastOK = false
 		s.state.LastError = lastLines(text, 3)
 		if s.state.LastError == "" && err != nil {
