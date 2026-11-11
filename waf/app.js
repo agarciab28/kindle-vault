@@ -197,7 +197,7 @@
       if (btn.disabled) { return false; }
       btn.disabled = true;
       accountMsg('<p><strong>Iniciando sesión…</strong></p>');
-      post('/api/login', { email: form.email.value, password: form.password.value, mfa: form.mfa.value }, function (r) {
+      post('/api/login', { email: form.email.value, password: form.password.value, mfa: form.mfa.value, accept: form.accept.value }, function (r) {
         btn.disabled = false;
         form.mfa.value = '';
         if (r.ok) {
@@ -213,6 +213,15 @@
         accountMsg('<p class="alert"><strong>No hubo respuesta del servicio.</strong> Vuelve a intentarlo.</p>');
       });
       return false;
+    },
+    accept: function () { // the third-party notice in the login form
+      var btn = document.getElementById('lf-accept');
+      var input = btn && btn.parentNode.parentNode.getElementsByTagName('input')[0];
+      if (!input) { return; }
+      var on = input.value !== '1';
+      input.value = on ? '1' : '';
+      btn.className = on ? 'btn on' : 'btn';
+      btn.innerHTML = on ? 'Aceptado' : 'Toca aquí para aceptar';
     },
     logout: function (confirmed) {
       if (!confirmed) {

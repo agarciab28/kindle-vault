@@ -25,6 +25,14 @@ launcher "$HERE/kindle/Boveda.sh" "$HERE/kindle/cover.png" | k "cat > /mnt/us/va
 put "$HERE/kindle/install.sh" /mnt/us/vault-app/install.sh
 put "$HERE/kindle/uninstall.sh" /mnt/us/vault-app/uninstall.sh
 put "$HERE/kindle/ob-kindle.sh" /mnt/us/ob-kindle.sh
+put "$HERE/kindle/boveda.conf.example" /mnt/us/vault-app/boveda.conf.example
+# CA bundle for the sync client (the Kindle only ships Amazon's CAs). Copied once,
+# from this computer's own bundle unless CACERT points to another one.
+if ! k "[ -s /mnt/us/ob-cacert.pem ]"; then
+  for c in "${CACERT:-}" /etc/ssl/cert.pem /etc/ssl/certs/ca-certificates.crt; do
+    if [ -n "$c" ] && [ -s "$c" ]; then echo "copying CA bundle ($c)…"; put "$c" /mnt/us/ob-cacert.pem; break; fi
+  done
+fi
 # Sync client (client/build.sh): only when it changed; it is 31 MB.
 if [ -f "$BUILD/ob-kindle" ]; then
   local_md5=$(md5 -q "$BUILD/ob-kindle" 2>/dev/null || md5sum "$BUILD/ob-kindle" | cut -d' ' -f1)

@@ -76,8 +76,15 @@ func validLogin(email, password, mfa string) string {
 }
 
 // Login signs in. On success it starts a sync.
-func (a *Account) Login(email, password, mfa string) AccountResult {
+//
+// accepted says the person ticked the third-party notice in the form. The sync
+// client asks every user to accept that it is not an Obsidian product; the app
+// shows that notice itself and only then passes --accept-disclaimer.
+func (a *Account) Login(email, password, mfa string, accepted bool) AccountResult {
 	email, mfa = strings.TrimSpace(email), strings.TrimSpace(mfa)
+	if !accepted {
+		return AccountResult{Message: "Para continuar, acepta el aviso: Bóveda no es una app oficial de Obsidian."}
+	}
 	if msg := validLogin(email, password, mfa); msg != "" {
 		return AccountResult{Message: msg}
 	}

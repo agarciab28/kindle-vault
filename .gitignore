@@ -11,3 +11,6 @@ state.json
 *.db.orig
 .obsidian-headless/
 ob-home/
+
+# Personal settings for the device
+boveda.conf

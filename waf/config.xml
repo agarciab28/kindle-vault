@@ -4,7 +4,7 @@
 
     <name xml:lang="en">Bóveda</name>
     <name xml:lang="es">Bóveda</name>
-    <description xml:lang="es">Bóveda de Obsidian (solo lectura)</description>
+    <description xml:lang="es">Lector no oficial de una bóveda de Obsidian (solo lectura)</description>
 
     <content src="index.html" />
 

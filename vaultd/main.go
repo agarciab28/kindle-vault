@@ -23,7 +23,7 @@ func main() {
 	accountCmd := flag.String("account", "/bin/sh /mnt/us/ob-kindle.sh", "client wrapper for login / logout / whoami")
 	wifiCmd := flag.String("wifi", "lipc-get-prop com.lab126.wifid cmState", "command that prints CONNECTED when online (empty: always online)")
 	homeCmd := flag.String("home", "lipc-set-prop com.lab126.appmgrd start app://com.lab126.booklet.home", "command that returns to the Kindle home")
-	tz := flag.String("tz", "America/Monterrey", "time zone for dates")
+	tz := flag.String("tz", "", "time zone for dates, e.g. Europe/Madrid (default: the device's)")
 	every := flag.Duration("auto", 30*time.Minute, "auto-sync when the last attempt is older than this (0 disables)")
 	tokenJS := flag.String("tokenjs", "/var/local/mesquite/vault/token.js", "where to publish the API token for the WAF")
 	flag.Parse()
@@ -33,8 +33,12 @@ func main() {
 		log.Fatalf("cannot publish the API token: %v", err)
 	}
 
-	if loc, err := time.LoadLocation(*tz); err == nil {
-		time.Local = loc
+	if *tz != "" {
+		if loc, err := time.LoadLocation(*tz); err == nil {
+			time.Local = loc
+		} else {
+			log.Printf("unknown time zone %q: using the device's", *tz)
+		}
 	}
 
 	v := NewVault(*vaultDir)
@@ -119,7 +123,8 @@ func main() {
 			writeJSON(w, AccountResult{Message: "Datos inválidos."})
 			return
 		}
-		res := acct.Login(r.PostForm.Get("email"), r.PostForm.Get("password"), r.PostForm.Get("mfa"))
+		res := acct.Login(r.PostForm.Get("email"), r.PostForm.Get("password"), r.PostForm.Get("mfa"),
+			r.PostForm.Get("accept") == "1")
 		log.Printf("account: login ok=%v", res.OK) // never the email or password
 		writeJSON(w, res)
 	})

@@ -74,6 +74,11 @@ func loginForm() string {
 		`<input id="lf-pass" name="password" type="password">` +
 		`<label for="lf-mfa">Código de verificación <span class="muted">(solo si lo tienes activado)</span></label>` +
 		`<input id="lf-mfa" name="mfa" type="text" maxlength="10">` +
+		`<div class="alert notice"><p><strong>Bóveda no es una app oficial de Obsidian.</strong> ` +
+		`Se conecta con obsidian-headless, un cliente hecho por la comunidad que Obsidian no respalda. ` +
+		`Si algo falla, no escribas al soporte de Obsidian.</p>` +
+		`<input name="accept" type="hidden" value="">` +
+		`<p><a class="btn" id="lf-accept" href="javascript:app.accept()">Toca aquí para aceptar</a></p></div>` +
 		`<p><button type="submit">Iniciar sesión</button></p></form>` +
 		`<div id="loginmsg"></div>` +
 		`<p class="muted">La contraseña va directo a Obsidian: el Kindle no la guarda, solo la sesión. Si ya había una sesión en este Kindle, se reemplaza.</p>`
